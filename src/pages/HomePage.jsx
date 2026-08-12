@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { analyzeSaju } from '../gemini.js'
+import { supabase } from '../supabase.js'
 
 function HomePage() {
   const navigate = useNavigate()
@@ -27,8 +28,34 @@ function HomePage() {
         gender,
         calendarType,
       })
-      // 해석 결과는 다음 페이지로 전달
-      navigate('/result', { state: { result: text, name } })
+
+      const { data: saved, error: saveError } = await supabase
+        .from('saju_readings')
+        .insert({
+          name,
+          birth_date: birthDate,
+          birth_time: birthTime || null,
+          gender,
+          calendar_type: calendarType,
+          result: text,
+        })
+        .select('id')
+        .single()
+
+      if (saveError) {
+        throw new Error(saveError.message || '결과 저장에 실패했어요.')
+      }
+
+      navigate(`/result/${saved.id}`, {
+        state: {
+          result: text,
+          name,
+          birthDate,
+          birthTime,
+          gender,
+          calendarType,
+        },
+      })
     } catch (err) {
       setError(err.message || '해석 요청에 실패했어요. 잠시 후 다시 시도해 주세요.')
     } finally {
