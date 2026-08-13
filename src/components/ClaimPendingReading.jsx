@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Analytics } from '../analytics.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import {
   clearPendingReading,
@@ -45,6 +46,7 @@ function ClaimPendingReading() {
         if (error) throw error
 
         clearPendingReading()
+        Analytics.claimPendingSuccess()
         navigate(`/result/${saved.id}`, {
           replace: true,
           state: {

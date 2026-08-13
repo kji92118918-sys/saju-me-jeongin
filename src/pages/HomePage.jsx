@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Analytics } from '../analytics.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ProfileFields, { emptyProfileForm, profileToForm } from '../components/ProfileFields.jsx'
 import ReadingStream from '../components/ReadingStream.jsx'
@@ -65,6 +66,8 @@ function HomePage() {
         throw new Error('이름, 생년월일, 성별은 꼭 입력해 주세요.')
       }
 
+      Analytics.analyzeStart({ isLoggedIn: Boolean(user) })
+
       const text = await analyzeSaju(
         {
           name,
@@ -99,6 +102,8 @@ function HomePage() {
           throw new Error(saveError.message || '결과 저장에 실패했어요.')
         }
 
+        Analytics.analyzeComplete({ isLoggedIn: true, saved: true })
+
         navigate(`/result/${saved.id}`, {
           state: {
             result: text,
@@ -122,6 +127,7 @@ function HomePage() {
         calendarType,
       }
       savePendingReading(pending)
+      Analytics.analyzeComplete({ isLoggedIn: false, saved: false })
       navigate('/result', { state: { ...pending, locked: true } })
     } catch (err) {
       setError(err.message || '해석 요청에 실패했어요. 잠시 후 다시 시도해 주세요.')

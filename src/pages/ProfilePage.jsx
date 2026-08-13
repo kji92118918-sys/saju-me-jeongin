@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Analytics } from '../analytics.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import ProfileFields, { emptyProfileForm, profileToForm } from '../components/ProfileFields.jsx'
 
@@ -23,6 +24,7 @@ function ProfilePage() {
     setValues(profileToForm(profile))
     setError('')
     setEditing(true)
+    Analytics.profileEditStart()
   }
 
   function cancelEdit() {
@@ -38,6 +40,7 @@ function ProfilePage() {
 
     try {
       await saveProfile(values)
+      Analytics.profileSave()
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || '프로필 저장에 실패했어요.')

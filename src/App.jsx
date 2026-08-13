@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import AnalyticsRouteTracker from './components/AnalyticsRouteTracker.jsx'
 import ClaimPendingReading from './components/ClaimPendingReading.jsx'
 import ProfileSetupModal from './components/ProfileSetupModal.jsx'
 import ReadingSidebar from './components/ReadingSidebar.jsx'
@@ -10,6 +11,7 @@ import './App.css'
 function App() {
   return (
     <div className="app-shell">
+      <AnalyticsRouteTracker />
       <ReadingSidebar />
       <main className="app-main">
         <Routes>

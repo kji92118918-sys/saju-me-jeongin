@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Analytics } from '../analytics.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import {
   loadPendingReading,
@@ -56,7 +57,6 @@ function ResultPage() {
   const [deleting, setDeleting] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
-  const [shareMessage, setShareMessage] = useState('')
   const [actionError, setActionError] = useState('')
 
   useEffect(() => {
@@ -78,7 +78,6 @@ function ResultPage() {
       setLoading(true)
       setError('')
       setNotFound(false)
-      setShareMessage('')
       setActionError('')
 
       const { data, error: fetchError } = await supabase.rpc('get_shared_reading', {
@@ -139,6 +138,7 @@ function ResultPage() {
     }
 
     try {
+      Analytics.unlockLoginClick()
       await signInWithGoogle(window.location.href)
     } catch (err) {
       setActionError(err.message || '로그인에 실패했어요.')
@@ -156,19 +156,18 @@ function ResultPage() {
       : '사주 이야기를 읽어 보세요.'
 
     setSharing(true)
-    setShareMessage('')
     setActionError('')
 
     try {
       if (navigator.share) {
         await navigator.share({ title, text, url })
-        setShareMessage('공유했어요.')
+        Analytics.share('web_share')
       } else if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url)
-        setShareMessage('링크를 복사했어요.')
+        Analytics.share('clipboard')
       } else {
         window.prompt('이 링크를 복사해 공유해 주세요.', url)
-        setShareMessage('링크를 복사해 주세요.')
+        Analytics.share('prompt')
       }
     } catch (err) {
       if (err?.name !== 'AbortError') {
@@ -199,6 +198,7 @@ function ResultPage() {
       return
     }
 
+    Analytics.deleteReading()
     navigate('/', { replace: true })
   }
 
@@ -296,7 +296,11 @@ function ResultPage() {
             {sharing ? '공유 중…' : '공유하기'}
           </button>
         )}
-        <Link className="cta cta--ghost" to="/">
+        <Link
+          className="cta cta--ghost"
+          to="/"
+          onClick={() => Analytics.clickNewSaju()}
+        >
           새 사주 보기
         </Link>
         {isOwner && (
@@ -311,11 +315,6 @@ function ResultPage() {
         )}
       </div>
 
-      {shareMessage && (
-        <p className="form-success" role="status">
-          {shareMessage}
-        </p>
-      )}
       {actionError && (
         <p className="form-error" role="alert">
           {actionError}

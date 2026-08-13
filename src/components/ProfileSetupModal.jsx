@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthContext.jsx'
+import { Analytics } from '../analytics.js'
 import { loadPendingReading } from '../pendingReading.js'
 import ProfileFields, { emptyProfileForm, profileToForm } from './ProfileFields.jsx'
 
@@ -45,6 +46,7 @@ function ProfileSetupModal() {
 
     try {
       await saveProfile(values)
+      Analytics.profileSetupComplete()
     } catch (err) {
       setError(err.message || '프로필 저장에 실패했어요.')
     } finally {

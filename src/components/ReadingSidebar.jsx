@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { Analytics } from '../analytics.js'
 import { useAuth } from '../auth/AuthContext.jsx'
 import { supabase } from '../supabase.js'
 
@@ -49,6 +50,7 @@ function ReadingSidebar() {
     setAuthBusy(true)
     setAuthError('')
     try {
+      Analytics.loginStart('sidebar')
       await signInWithGoogle()
     } catch (err) {
       setAuthError(err.message || '로그인에 실패했어요.')
@@ -60,6 +62,7 @@ function ReadingSidebar() {
     setAuthBusy(true)
     setAuthError('')
     try {
+      Analytics.logout()
       await signOut()
     } catch (err) {
       setAuthError(err.message || '로그아웃에 실패했어요.')
