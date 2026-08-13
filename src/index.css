@@ -1,18 +1,46 @@
-:root {
-  --ink: #1f1f1d;
-  --ink-soft: #4a4a46;
-  --mist: #d8d5cf;
-  --paper: #ece9e3;
-  --paper-deep: #e0ddd6;
-  --line: #b8b4ac;
-  --focus: #2c2c28;
+@font-face {
+  font-family: 'GapyeongHanseokbongBigBrush';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2312-1@1.1/GapyeongHanseokbong-Light.woff2')
+    format('woff2');
+  font-weight: 300;
+  font-display: swap;
+}
 
-  --font-display: 'Cormorant Garamond', 'Gowun Batang', serif;
-  --font-body: 'Gowun Batang', serif;
+@font-face {
+  font-family: 'GapyeongHanseokbongBigBrush';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2312-1@1.1/GapyeongHanseokbong-Regular.woff2')
+    format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'GapyeongHanseokbongBigBrush';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2312-1@1.1/GapyeongHanseokbong-Bold.woff2')
+    format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+:root {
+  --ink: #1a1916;
+  --ink-soft: #5c574e;
+  --mist: #cfc8bc;
+  --paper: #ebe6dc;
+  --paper-deep: #ddd6c8;
+  --line: #b0a898;
+  --focus: #2a271f;
+  --wash: color-mix(in srgb, var(--paper) 72%, white);
+
+  --font-display: 'GapyeongHanseokbongBigBrush', serif;
+  --font-body: 'GapyeongHanseokbongBigBrush', serif;
 
   color: var(--ink);
   background-color: var(--paper);
   font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1.75;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -33,14 +61,18 @@ body,
 body {
   margin: 0;
   background-color: var(--paper);
-  /* 미세 점 패턴 — SVG (그라데이션 없음) */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Ccircle cx='1' cy='1' r='1' fill='%231f1f1d' fill-opacity='0.06'/%3E%3C/svg%3E");
-  background-size: 18px 18px;
+  background-image:
+    radial-gradient(ellipse at 18% 8%, color-mix(in srgb, var(--mist) 38%, transparent), transparent 42%),
+    radial-gradient(ellipse at 88% 18%, color-mix(in srgb, var(--mist) 28%, transparent), transparent 38%),
+    radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--paper-deep) 55%, transparent), transparent 48%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='1.5' cy='1.5' r='0.9' fill='%231a1916' fill-opacity='0.045'/%3E%3C/svg%3E");
+  background-size: auto, auto, auto, 22px 22px;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
 }
