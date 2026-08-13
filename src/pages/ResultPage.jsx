@@ -1,87 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext.jsx'
+import {
+  loadPendingReading,
+  savePendingReading,
+  splitReadingPreview,
+} from '../pendingReading.js'
 import { supabase } from '../supabase.js'
 
 const genderLabel = { male: '남자', female: '여자' }
 const calendarLabel = { solar: '양력', lunar: '음력' }
 
-function emptyForm() {
-  return {
-    name: '',
-    birth_date: '',
-    birth_time: '',
-    gender: '',
-    calendar_type: 'solar',
-    result: '',
-  }
-}
-
-function toForm(reading) {
-  if (!reading) return emptyForm()
-  return {
-    name: reading.name ?? '',
-    birth_date: reading.birth_date ?? '',
-    birth_time: reading.birth_time ? String(reading.birth_time).slice(0, 5) : '',
-    gender: reading.gender ?? '',
-    calendar_type: reading.calendar_type ?? 'solar',
-    result: reading.result ?? '',
-  }
-}
-
 function formatBirthMeta(reading) {
-  if (!reading?.birth_date) return ''
+  if (!reading?.birth_date && !reading?.birthDate) return ''
 
-  const parts = [reading.birth_date]
-  if (reading.birth_time) {
-    parts.push(String(reading.birth_time).slice(0, 5))
-  }
+  const parts = [reading.birth_date ?? reading.birthDate]
+  const time = reading.birth_time ?? reading.birthTime
+  if (time) parts.push(String(time).slice(0, 5))
   if (reading.gender) parts.push(genderLabel[reading.gender] ?? reading.gender)
-  if (reading.calendar_type) {
-    parts.push(calendarLabel[reading.calendar_type] ?? reading.calendar_type)
-  }
+  const calendar = reading.calendar_type ?? reading.calendarType
+  if (calendar) parts.push(calendarLabel[calendar] ?? calendar)
   return parts.join(' · ')
+}
+
+function buildShareUrl(id) {
+  return `${window.location.origin}/result/${id}`
+}
+
+function normalizeStateReading(stateReading, userId) {
+  if (!stateReading?.result) return null
+  return {
+    name: stateReading.name,
+    result: stateReading.result,
+    birth_date: stateReading.birthDate ?? stateReading.birth_date,
+    birth_time: stateReading.birthTime ?? stateReading.birth_time,
+    gender: stateReading.gender,
+    calendar_type: stateReading.calendarType ?? stateReading.calendar_type,
+    user_id: stateReading.user_id ?? userId ?? null,
+  }
 }
 
 function ResultPage() {
   const { id } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
+  const { user, profileComplete, loading: authLoading, signInWithGoogle } = useAuth()
   const stateReading = location.state
 
   const [reading, setReading] = useState(() =>
-    stateReading?.result
-      ? {
-          name: stateReading.name,
-          result: stateReading.result,
-          birth_date: stateReading.birthDate ?? stateReading.birth_date,
-          birth_time: stateReading.birthTime ?? stateReading.birth_time,
-          gender: stateReading.gender,
-          calendar_type: stateReading.calendarType ?? stateReading.calendar_type,
-        }
-      : null,
+    normalizeStateReading(stateReading, user?.id),
   )
   const [loading, setLoading] = useState(Boolean(id) && !stateReading?.result)
   const [error, setError] = useState('')
   const [notFound, setNotFound] = useState(false)
-
-  const [editing, setEditing] = useState(false)
-  const [form, setForm] = useState(() =>
-    toForm(
-      stateReading?.result
-        ? {
-            name: stateReading.name,
-            result: stateReading.result,
-            birth_date: stateReading.birthDate ?? stateReading.birth_date,
-            birth_time: stateReading.birthTime ?? stateReading.birth_time,
-            gender: stateReading.gender,
-            calendar_type: stateReading.calendarType ?? stateReading.calendar_type,
-          }
-        : null,
-    ),
-  )
-  const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [loginBusy, setLoginBusy] = useState(false)
+  const [shareMessage, setShareMessage] = useState('')
   const [actionError, setActionError] = useState('')
+
+  useEffect(() => {
+    if (id) return
+    if (reading?.result) return
+
+    const pending = loadPendingReading()
+    if (!pending?.result) return
+
+    setReading(normalizeStateReading(pending, null))
+  }, [id, reading?.result])
 
   useEffect(() => {
     if (!id) return
@@ -92,14 +78,12 @@ function ResultPage() {
       setLoading(true)
       setError('')
       setNotFound(false)
-      setEditing(false)
+      setShareMessage('')
       setActionError('')
 
-      const { data, error: fetchError } = await supabase
-        .from('saju_readings')
-        .select('name, result, birth_date, birth_time, gender, calendar_type')
-        .eq('id', id)
-        .maybeSingle()
+      const { data, error: fetchError } = await supabase.rpc('get_shared_reading', {
+        p_id: id,
+      })
 
       if (cancelled) return
 
@@ -109,14 +93,15 @@ function ResultPage() {
         return
       }
 
-      if (!data) {
+      const row = Array.isArray(data) ? data[0] : data
+
+      if (!row) {
         setNotFound(true)
         setLoading(false)
         return
       }
 
-      setReading(data)
-      setForm(toForm(data))
+      setReading(row)
       setLoading(false)
     }
 
@@ -127,60 +112,75 @@ function ResultPage() {
     }
   }, [id])
 
-  function updateField(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }))
-  }
+  const isOwner = Boolean(user && reading?.user_id && user.id === reading.user_id)
+  // Guest preview (no saved id): lock until logged in + profile ready
+  const isLocked = Boolean(!id && reading?.result && (!user || !profileComplete))
 
-  function startEdit() {
-    setForm(toForm(reading))
+  const { preview } = useMemo(
+    () => splitReadingPreview(reading?.result ?? '', 0.48),
+    [reading?.result],
+  )
+
+  async function handleLogin() {
+    setLoginBusy(true)
     setActionError('')
-    setEditing(true)
+
+    if (reading?.result) {
+      savePendingReading({
+        result: reading.result,
+        name: reading.name,
+        birthDate: reading.birth_date ?? reading.birthDate,
+        birthTime: reading.birth_time
+          ? String(reading.birth_time).slice(0, 5)
+          : reading.birthTime ?? '',
+        gender: reading.gender,
+        calendarType: reading.calendar_type ?? reading.calendarType ?? 'solar',
+      })
+    }
+
+    try {
+      await signInWithGoogle(window.location.href)
+    } catch (err) {
+      setActionError(err.message || '로그인에 실패했어요.')
+      setLoginBusy(false)
+    }
   }
 
-  function cancelEdit() {
-    setForm(toForm(reading))
-    setActionError('')
-    setEditing(false)
-  }
-
-  async function handleUpdate(e) {
-    e.preventDefault()
+  async function handleShare() {
     if (!id) return
 
-    setSaving(true)
+    const url = buildShareUrl(id)
+    const title = reading?.name ? `${reading.name}님의 사주` : '사주미 결과'
+    const text = reading?.name
+      ? `${reading.name}님의 사주 이야기를 읽어 보세요.`
+      : '사주 이야기를 읽어 보세요.'
+
+    setSharing(true)
+    setShareMessage('')
     setActionError('')
 
-    const payload = {
-      name: form.name.trim(),
-      birth_date: form.birth_date,
-      birth_time: form.birth_time || null,
-      gender: form.gender,
-      calendar_type: form.calendar_type,
-      result: form.result.trim(),
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, text, url })
+        setShareMessage('공유했어요.')
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url)
+        setShareMessage('링크를 복사했어요.')
+      } else {
+        window.prompt('이 링크를 복사해 공유해 주세요.', url)
+        setShareMessage('링크를 복사해 주세요.')
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setActionError('공유에 실패했어요. 잠시 후 다시 시도해 주세요.')
+      }
+    } finally {
+      setSharing(false)
     }
-
-    const { data, error: updateError } = await supabase
-      .from('saju_readings')
-      .update(payload)
-      .eq('id', id)
-      .select('name, result, birth_date, birth_time, gender, calendar_type')
-      .single()
-
-    setSaving(false)
-
-    if (updateError) {
-      setActionError(updateError.message || '수정에 실패했어요.')
-      return
-    }
-
-    setReading(data)
-    setForm(toForm(data))
-    setEditing(false)
-    navigate(`/result/${id}`, { replace: true })
   }
 
   async function handleDelete() {
-    if (!id) return
+    if (!id || !isOwner) return
     const ok = window.confirm('이 사주 기록을 삭제할까요?')
     if (!ok) return
 
@@ -202,7 +202,7 @@ function ResultPage() {
     navigate('/', { replace: true })
   }
 
-  if (!id && !reading?.result) {
+  if (!id && !reading?.result && !authLoading) {
     return <Navigate to="/" replace />
   }
 
@@ -210,7 +210,7 @@ function ResultPage() {
     return <Navigate to="/" replace />
   }
 
-  if (loading) {
+  if (loading || (!reading?.result && authLoading)) {
     return (
       <div className="page page--result">
         <div className="mist mist--a" aria-hidden="true" />
@@ -246,138 +246,76 @@ function ResultPage() {
         <h1 className="headline">
           {reading?.name ? `${reading.name}님의 이야기` : '당신의 이야기'}
         </h1>
-        {!editing && meta ? <p className="reading-meta">{meta}</p> : null}
+        {meta ? <p className="reading-meta">{meta}</p> : null}
         <p className="lede">
-          {editing ? '기록을 다듬어 다시 남겨 주세요.' : '잠시 숨 고르고, 천천히 읽어 보세요.'}
+          {isLocked
+            ? '앞부분은 먼저 읽어 보세요. 이어서 보려면 로그인이 필요해요.'
+            : '잠시 숨 고르고, 천천히 읽어 보세요.'}
         </p>
       </header>
 
-      {editing ? (
-        <form className="saju-form result-edit-form" onSubmit={handleUpdate}>
-          <label className="field">
-            <span className="field__label">이름</span>
-            <input
-              className="field__input"
-              type="text"
-              value={form.name}
-              onChange={(e) => updateField('name', e.target.value)}
-              required
-            />
-          </label>
+      <article className={`reading ${isLocked ? 'reading--locked' : ''}`}>
+        <div className="reading__ornament" aria-hidden="true">
+          ✦
+        </div>
+        <p className="reading__body">{isLocked ? preview : reading?.result}</p>
 
-          <label className="field">
-            <span className="field__label">생년월일</span>
-            <input
-              className="field__input"
-              type="date"
-              value={form.birth_date}
-              onChange={(e) => updateField('birth_date', e.target.value)}
-              required
-            />
-          </label>
-
-          <label className="field">
-            <span className="field__label">태어난 시간</span>
-            <input
-              className="field__input"
-              type="time"
-              value={form.birth_time}
-              onChange={(e) => updateField('birth_time', e.target.value)}
-            />
-          </label>
-
-          <fieldset className="field field--group">
-            <legend className="field__label">성별</legend>
-            <div className="choice-row">
-              <label className="choice">
-                <input
-                  type="radio"
-                  name="edit-gender"
-                  value="male"
-                  checked={form.gender === 'male'}
-                  onChange={(e) => updateField('gender', e.target.value)}
-                  required
-                />
-                <span>남자</span>
-              </label>
-              <label className="choice">
-                <input
-                  type="radio"
-                  name="edit-gender"
-                  value="female"
-                  checked={form.gender === 'female'}
-                  onChange={(e) => updateField('gender', e.target.value)}
-                />
-                <span>여자</span>
-              </label>
+        {isLocked && (
+          <div className="reading-lock">
+            <div className="reading-lock__fade" aria-hidden="true" />
+            <div className="reading-lock__panel">
+              <p className="reading-lock__title">여기서부터는 로그인이 필요해요</p>
+              <p className="reading-lock__text">
+                {user
+                  ? '프로필을 남기면 나머지 이야기와 기록을 모두 열어 드려요.'
+                  : 'Google로 로그인하면 나머지 이야기와 기록을 모두 열어 드려요.'}
+              </p>
+              {!user && (
+                <button
+                  className="cta"
+                  type="button"
+                  onClick={handleLogin}
+                  disabled={loginBusy}
+                >
+                  {loginBusy ? '이동 중…' : 'Google로 로그인하고 이어보기'}
+                </button>
+              )}
             </div>
-          </fieldset>
-
-          <label className="field">
-            <span className="field__label">양력 / 음력</span>
-            <select
-              className="field__input"
-              value={form.calendar_type}
-              onChange={(e) => updateField('calendar_type', e.target.value)}
-            >
-              <option value="solar">양력</option>
-              <option value="lunar">음력</option>
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field__label">사주 결과</span>
-            <textarea
-              className="field__input field__textarea"
-              value={form.result}
-              onChange={(e) => updateField('result', e.target.value)}
-              rows={12}
-              required
-            />
-          </label>
-
-          <div className="result-actions">
-            <button className="cta" type="submit" disabled={saving || deleting}>
-              {saving ? '저장 중…' : '저장하기'}
-            </button>
-            <button
-              className="cta cta--ghost"
-              type="button"
-              onClick={cancelEdit}
-              disabled={saving || deleting}
-            >
-              취소
-            </button>
           </div>
-        </form>
-      ) : (
-        <>
-          <article className="reading">
-            <div className="reading__ornament" aria-hidden="true">
-              ✦
-            </div>
-            <p className="reading__body">{reading?.result}</p>
-          </article>
+        )}
+      </article>
 
-          <div className="result-actions">
-            <button className="cta cta--ghost" type="button" onClick={startEdit}>
-              수정하기
-            </button>
-            <button
-              className="cta cta--danger"
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
-              {deleting ? '삭제 중…' : '삭제하기'}
-            </button>
-            <Link className="cta cta--ghost" to="/">
-              내 사주 보기
-            </Link>
-          </div>
-        </>
+      <div className="result-actions">
+        {id && (
+          <button
+            className="cta"
+            type="button"
+            onClick={handleShare}
+            disabled={sharing}
+          >
+            {sharing ? '공유 중…' : '공유하기'}
+          </button>
+        )}
+        <Link className="cta cta--ghost" to="/">
+          새 사주 보기
+        </Link>
+        {isOwner && (
+          <button
+            className="cta cta--danger"
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting || !id}
+          >
+            {deleting ? '삭제 중…' : '삭제하기'}
+          </button>
+        )}
+      </div>
+
+      {shareMessage && (
+        <p className="form-success" role="status">
+          {shareMessage}
+        </p>
       )}
-
       {actionError && (
         <p className="form-error" role="alert">
           {actionError}
